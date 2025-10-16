@@ -47,10 +47,6 @@ sudo ./splunk_install.sh
 - Installation logs are stored in `splunk_install.log`
 - Check this file for detailed information about the installation process and any errors
 
-## Support
-
-For issues or improvements, please open an issue in the GitHub repository.
-
 ## Security Note
 
 This script is designed for rapid deployment in controlled environments. For production deployments, additional security measures should be implemented.
