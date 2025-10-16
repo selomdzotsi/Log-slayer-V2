@@ -2,7 +2,7 @@
 
 # Script: Splunk Enterprise Installer
 # Description: Automated Splunk Enterprise deployment script for Linux systems
-# Version: 1.2
+# Version: 1.3
 
 # Set error handling
 set -e
@@ -16,6 +16,73 @@ SPLUNK_URL="https://download.splunk.com/products/splunk/releases/9.4.2/linux/spl
 # Progress bar variables
 PROGRESS_BAR_WIDTH=50  # Width of the progress bar
 TOTAL_STEPS=5         # Total number of installation steps
+
+# Function to validate password strength
+validate_password() {
+    local password=$1
+    local length=${#password}
+    
+    if [ $length -lt 8 ]; then
+        echo "Password must be at least 8 characters long"
+        return 1
+    fi
+    
+    if ! echo "$password" | grep -q "[A-Z]"; then
+        echo "Password must contain at least one uppercase letter"
+        return 1
+    fi
+    
+    if ! echo "$password" | grep -q "[a-z]"; then
+        echo "Password must contain at least one lowercase letter"
+        return 1
+    fi
+    
+    if ! echo "$password" | grep -q "[0-9]"; then
+        echo "Password must contain at least one number"
+        return 1
+    fi
+    
+    if ! echo "$password" | grep -q "[!@#$%^&*()_+]"; then
+        echo "Password must contain at least one special character (!@#$%^&*()_+)"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to get credentials
+get_credentials() {
+    local valid_credentials=false
+    
+    while [ "$valid_credentials" = false ]; do
+        # Get username
+        read -p "Enter Splunk admin username: " SPLUNK_USERNAME
+        if [ -z "$SPLUNK_USERNAME" ]; then
+            echo "Username cannot be empty"
+            continue
+        fi
+        
+        # Get password
+        while true; do
+            read -s -p "Enter Splunk admin password: " SPLUNK_PASSWORD
+            echo
+            read -s -p "Confirm password: " SPLUNK_PASSWORD_CONFIRM
+            echo
+            
+            if [ "$SPLUNK_PASSWORD" = "$SPLUNK_PASSWORD_CONFIRM" ]; then
+                if validate_password "$SPLUNK_PASSWORD"; then
+                    valid_credentials=true
+                    break
+                fi
+            else
+                echo "Passwords do not match"
+            fi
+        done
+    done
+    
+    # Log that credentials were set (without the actual credentials)
+    log_message "Splunk admin credentials configured" 1
+}
 
 # Function to display progress bar
 show_progress() {
@@ -108,8 +175,8 @@ download_splunk() {
         log_message "Download successful" 2
     else
         log_message "ERROR: Splunk download failed. Check $LOG_FILE for details"
-        exit 1
-    fi
+   exit 1
+fi
 }
 
 # Function to install Splunk
@@ -120,8 +187,8 @@ install_splunk() {
         log_message "Splunk Enterprise successfully installed" 3
     else
         log_message "ERROR: Splunk installation failed. Check $LOG_FILE for details"
-        exit 1
-    fi
+exit 1
+fi
 }
 
 # Function to start Splunk
@@ -129,7 +196,14 @@ start_splunk() {
     log_message "Starting Splunk..." 4
     cd /opt/splunk/bin || exit 1
     
-    if ./splunk start --accept-license --answer-yes --no-prompt 2>> "$LOG_FILE"; then
+    # Create user-seed.conf with admin credentials
+    cat > "/opt/splunk/etc/system/local/user-seed.conf" << EOF
+[user_info]
+USERNAME = $SPLUNK_USERNAME
+PASSWORD = $SPLUNK_PASSWORD
+EOF
+
+    if ./splunk start --accept-license --no-prompt 2>> "$LOG_FILE"; then
         log_message "Splunk successfully started" 4
         ./splunk enable boot-start -user splunk -systemd-managed 1 >> "$LOG_FILE" 2>&1
         log_message "Splunk boot-start enabled" 4
@@ -138,17 +212,19 @@ start_splunk() {
         SERVER_IP=$(hostname -I | awk '{print $1}')
         log_message "Installation Complete!" 5
         echo -e "\nSplunk web interface available at: http://$SERVER_IP:8000"
-        echo "Default credentials: admin/changeme"
+        echo "Login with your configured credentials:"
+        echo "Username: $SPLUNK_USERNAME"
     else
         log_message "ERROR: Splunk failed to start. Check $LOG_FILE for details"
-        exit 1
-    fi
+exit 1
+fi
 }
 
 # Main execution
 main() {
     echo "Starting Splunk installation process..."
     echo "----------------------------------------"
+    get_credentials
     check_system_requirements
     download_splunk
     install_splunk

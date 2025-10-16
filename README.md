@@ -36,11 +36,19 @@ chmod +x splunk_install.sh
 sudo ./splunk_install.sh
 ```
 
+During installation, you will be prompted to:
+- Enter an admin username
+- Create a secure password that meets the following requirements:
+  - Minimum 8 characters
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one number
+  - At least one special character (!@#$%^&*()_+)
+
 ## Post-Installation
 
 - Access Splunk web interface at `http://your-server-ip:8000`
-- Default credentials: `admin/changeme`
-- Change the default password immediately after first login
+- Login using the credentials you configured during installation
 
 ## Logging
 
