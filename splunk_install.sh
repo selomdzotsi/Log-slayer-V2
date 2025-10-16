@@ -2,7 +2,7 @@
 
 # Script: Splunk Enterprise Installer
 # Description: Automated Splunk Enterprise deployment script for Linux systems
-# Version: 1.3
+# Version: 1.4
 
 # Set error handling
 set -e
@@ -16,6 +16,64 @@ SPLUNK_URL="https://download.splunk.com/products/splunk/releases/9.4.2/linux/spl
 # Progress bar variables
 PROGRESS_BAR_WIDTH=50  # Width of the progress bar
 TOTAL_STEPS=5         # Total number of installation steps
+CURRENT_STEP=0        # Current step counter
+
+# Function to clear the current line
+clear_line() {
+    printf "\r%${COLUMNS}s\r" ""
+}
+
+# Function to display progress bar
+show_progress() {
+    local current_step=$1
+    local message=$2
+    local percentage=$((current_step * 100 / TOTAL_STEPS))
+    local filled_width=$((percentage * PROGRESS_BAR_WIDTH / 100))
+    local empty_width=$((PROGRESS_BAR_WIDTH - filled_width))
+
+    # Clear the current line before showing new progress
+    clear_line
+
+    # Create the progress bar
+    printf "\r  ["
+    printf "%${filled_width}s" "" | tr ' ' '█'
+    printf "%${empty_width}s" "" | tr ' ' '░'
+    printf "] %3d%% | %s" "$percentage" "$message"
+
+    # Only add newline if explicitly requested
+    if [ "$3" = "newline" ]; then
+        printf "\n"
+    fi
+}
+
+# Function to update progress
+update_progress() {
+    local message=$1
+    local increment=${2:-1}
+    CURRENT_STEP=$((CURRENT_STEP + increment))
+    show_progress "$CURRENT_STEP" "$message"
+}
+
+# Function to log messages
+log_message() {
+    local message=$1
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Always log to file
+    echo "[$timestamp] $message" >> "$LOG_FILE"
+    
+    # Handle display based on message type
+    if [[ "$message" == ERROR* ]]; then
+        # Show error messages on new line
+        printf "\n%s\n" "$message"
+    elif [[ "$message" == SUCCESS* ]]; then
+        # Show success messages on new line
+        update_progress "$message" 0 "newline"
+    else
+        # Update progress bar with current message
+        update_progress "$message"
+    fi
+}
 
 # Function to validate password strength
 validate_password() {
@@ -54,6 +112,9 @@ validate_password() {
 get_credentials() {
     local valid_credentials=false
     
+    echo "Setting up Splunk admin credentials"
+    echo "--------------------------------"
+    
     while [ "$valid_credentials" = false ]; do
         # Get username
         read -p "Enter Splunk admin username: " SPLUNK_USERNAME
@@ -80,45 +141,13 @@ get_credentials() {
         done
     done
     
-    # Log that credentials were set (without the actual credentials)
-    log_message "Splunk admin credentials configured" 1
-}
-
-# Function to display progress bar
-show_progress() {
-    local current_step=$1
-    local message=$2
-    local percentage=$((current_step * 100 / TOTAL_STEPS))
-    local filled_width=$((percentage * PROGRESS_BAR_WIDTH / 100))
-    local empty_width=$((PROGRESS_BAR_WIDTH - filled_width))
-
-    # Create the progress bar
-    printf "\r[" # Start of progress bar
-    printf "%${filled_width}s" '' | tr ' ' '='
-    printf "%${empty_width}s" '' | tr ' ' ' '
-    printf "] %3d%% - %s" "$percentage" "$message"
-
-    # If this is the last step, add a newline
-    if [ "$current_step" -eq "$TOTAL_STEPS" ]; then
-        printf "\n"
-    fi
-}
-
-# Function to log messages
-log_message() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] $1" >> "$LOG_FILE"
-    # Only show progress bar if it's not an error message
-    if [[ ! "$1" == ERROR* ]]; then
-        show_progress "$2" "$1"
-    else
-        echo "$1"
-    fi
+    echo "--------------------------------"
+    log_message "Credentials configured successfully"
 }
 
 # Function to check system requirements
 check_system_requirements() {
-    log_message "Checking system requirements..." 1
+    log_message "Checking system requirements..."
     
     # Check if running as root
     if [[ $EUID -ne 0 ]]; then
@@ -141,12 +170,12 @@ check_system_requirements() {
         OS_VERSION=$(lsb_release -sr)
     fi
 
-    log_message "Detected OS: $OS_NAME $OS_VERSION" 1
+    log_message "Detected OS: $OS_NAME $OS_VERSION"
 
     # Check for supported distributions
     case "$OS_NAME" in
         *Ubuntu*|*Debian*)
-            log_message "Supported distribution detected" 1
+            log_message "Verifying system compatibility..."
             ;;
         *)
             log_message "ERROR: Unsupported Linux distribution. This script is designed for Ubuntu/Debian"
@@ -163,37 +192,37 @@ check_system_requirements() {
 
     # Check if wget is installed
     if ! command -v wget &> /dev/null; then
-        log_message "Installing wget..." 1
+        log_message "Installing required dependencies..."
         apt-get update && apt-get install -y wget
     fi
 }
 
 # Function to download Splunk
 download_splunk() {
-    log_message "Downloading Splunk Enterprise Debian Package..." 2
+    log_message "Downloading Splunk Enterprise..."
     if wget -O "$SPLUNK_DEB" "$SPLUNK_URL" 2>> "$LOG_FILE"; then
-        log_message "Download successful" 2
+        log_message "Download completed successfully"
     else
         log_message "ERROR: Splunk download failed. Check $LOG_FILE for details"
-   exit 1
-fi
+        exit 1
+    fi
 }
 
 # Function to install Splunk
 install_splunk() {
-    log_message "Installing Splunk Enterprise..." 3
+    log_message "Installing Splunk Enterprise..."
     if dpkg -i "$SPLUNK_DEB" 2>> "$LOG_FILE"; then
         dpkg --status splunk >> "$LOG_FILE"
-        log_message "Splunk Enterprise successfully installed" 3
+        log_message "Installation completed successfully"
     else
         log_message "ERROR: Splunk installation failed. Check $LOG_FILE for details"
-exit 1
-fi
+        exit 1
+    fi
 }
 
 # Function to start Splunk
 start_splunk() {
-    log_message "Starting Splunk..." 4
+    log_message "Configuring Splunk services..."
     cd /opt/splunk/bin || exit 1
     
     # Create user-seed.conf with admin credentials
@@ -204,33 +233,39 @@ PASSWORD = $SPLUNK_PASSWORD
 EOF
 
     if ./splunk start --accept-license --no-prompt 2>> "$LOG_FILE"; then
-        log_message "Splunk successfully started" 4
+        log_message "Splunk services started successfully"
         ./splunk enable boot-start -user splunk -systemd-managed 1 >> "$LOG_FILE" 2>&1
-        log_message "Splunk boot-start enabled" 4
         
         # Get server IP address
         SERVER_IP=$(hostname -I | awk '{print $1}')
-        log_message "Installation Complete!" 5
-        echo -e "\nSplunk web interface available at: http://$SERVER_IP:8000"
+        log_message "SUCCESS: Installation Complete!" "newline"
+        echo
+        echo "Splunk web interface available at: http://$SERVER_IP:8000"
         echo "Login with your configured credentials:"
         echo "Username: $SPLUNK_USERNAME"
+        echo
     else
         log_message "ERROR: Splunk failed to start. Check $LOG_FILE for details"
-exit 1
-fi
+        exit 1
+    fi
 }
 
 # Main execution
 main() {
-    echo "Starting Splunk installation process..."
-    echo "----------------------------------------"
+    # Clear screen for better visibility
+    clear
+    
+    echo "Splunk Enterprise Installation"
+    echo "=============================="
+    echo
+    
     get_credentials
     check_system_requirements
     download_splunk
     install_splunk
     start_splunk
-    echo "----------------------------------------"
-    log_message "Splunk installation completed successfully" 5
+    
+    echo "=============================="
 }
 
 # Execute main function
