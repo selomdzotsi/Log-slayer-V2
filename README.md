@@ -22,7 +22,7 @@ A streamlined script for rapidly deploying Splunk Enterprise on Ubuntu/Debian Li
 
 1. Clone this repository or download the script:
 ```bash
-git clone https://github.com/yourusername/Log-slayer-V2.git
+git clone https://github.com/selomdzotsi/Log-slayer-V2.git
 cd Log-slayer-V2
 ```
 
