@@ -49,6 +49,13 @@ During installation, you will be prompted to:
 
 - Access Splunk web interface at `http://your-server-ip:8000`
 - Login using the credentials you configured during installation
+- Splunk is configured to start automatically at system boot
+- You can manually control the Splunk service using:
+  ```bash
+  sudo systemctl start splunk   # Start Splunk
+  sudo systemctl stop splunk    # Stop Splunk
+  sudo systemctl status splunk  # Check Splunk status
+  ```
 
 ## Logging
 

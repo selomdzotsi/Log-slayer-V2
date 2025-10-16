@@ -165,6 +165,26 @@ exit 1
 fi
 }
 
+# Function to configure boot-start
+configure_boot_start() {
+    log_message "Configuring Splunk to start at boot..."
+    
+    # Enable boot-start with systemd
+    if ./splunk enable boot-start -user splunk -systemd-managed 1 >> "$LOG_FILE" 2>&1; then
+        log_message "Boot-start configuration successful"
+        
+        # Verify boot-start configuration
+        if systemctl is-enabled splunk > /dev/null 2>&1; then
+            log_message "Verified: Splunk service is enabled at boot"
+        else
+            log_message "WARNING: Boot-start verification failed. Please check system configuration"
+        fi
+    else
+        log_message "ERROR: Failed to configure boot-start. Check $LOG_FILE for details"
+        return 1
+    fi
+}
+
 # Function to start Splunk
 start_splunk() {
     log_message "Starting and configuring Splunk..."
@@ -179,7 +199,12 @@ EOF
 
     if ./splunk start --accept-license --no-prompt 2>> "$LOG_FILE"; then
         log_message "Splunk services started successfully"
-        ./splunk enable boot-start -user splunk -systemd-managed 1 >> "$LOG_FILE" 2>&1
+        
+        # Configure boot-start
+        if ! configure_boot_start; then
+            log_message "WARNING: Boot-start configuration failed, but Splunk is running"
+            log_message "You can manually enable boot-start later with: sudo /opt/splunk/bin/splunk enable boot-start"
+        fi
         
         # Get server IP address
         SERVER_IP=$(hostname -I | awk '{print $1}')
@@ -189,10 +214,13 @@ EOF
         echo "Login with your configured credentials:"
         echo "Username: $SPLUNK_USERNAME"
         echo
+        echo "Splunk has been configured to start automatically at boot time"
+        echo "You can manually start/stop Splunk with: sudo systemctl start/stop splunk"
+        echo
     else
         log_message "ERROR: Splunk failed to start. Check $LOG_FILE for details"
-exit 1
-fi
+        exit 1
+    fi
 }
 
 # Main execution
